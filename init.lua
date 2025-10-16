@@ -2,7 +2,7 @@ local mq = require('mq')
 local ImGui = require('ImGui')
 local json = require('dkjson')
 
-local raid_hud = require('EZRaid.raid_hud')
+local raid_hud = require('EZRaid.modules.raid_hud')
 
 -- EZRaid: Live PC raid layout, invites, and assignment
 
