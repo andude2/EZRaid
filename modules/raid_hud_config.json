@@ -10,6 +10,7 @@
     "show_mana":false,
     "show_distance":false,
     "show_offline":false,
+    "show_hp":true,
     "name_width":120,
     "mana_width":60,
     "distance_width":70,

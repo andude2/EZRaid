@@ -41,14 +41,12 @@ local config = {
         show_mana = false,
         show_distance = false,
         show_offline = false,
+        show_hp = true,
         name_width = 120,
         mana_width = 60,
         distance_width = 70,
         class_width = 50,
         name_class_width = 160, -- Width for "Name (Class)" format
-        auto_size = true, -- Enable auto-sizing
-        min_window_height = 120,
-        max_window_height = 800,
         line_spacing = 0, -- Extra spacing between lines
         -- Group layout options
         enable_group_layout = false, -- Enable multi-column group layout
@@ -153,6 +151,10 @@ local function class_uses_mana(class_name)
         ["BER"] = true,
     }
     return not non_mana_classes[upper_class]
+end
+
+local function is_hp_column_enabled()
+    return config.display.show_hp ~= false
 end
 
 -- Normalize MQ truthy/falsey values to strict booleans
@@ -278,23 +280,26 @@ render_member_cells_inline = function(member)
         end
     end
     
-    -- HP% column with color coding (2nd column)
-    ImGui.TableNextColumn()
-    local hp_color = {r=0.9, g=0.9, b=0.9, a=1.0} -- white default
-    if member.hp_percent < 25 then
-        hp_color = {r=1.0, g=0.2, b=0.2, a=1.0} -- red
-    elseif member.hp_percent < 50 then
-        hp_color = {r=1.0, g=0.7, b=0.2, a=1.0} -- orange
-    elseif member.hp_percent < 75 then
-        hp_color = {r=1.0, g=1.0, b=0.3, a=1.0} -- yellow
-    else
-        hp_color = {r=0.3, g=1.0, b=0.3, a=1.0} -- green
+    if is_hp_column_enabled() then
+        -- HP% column with color coding
+        ImGui.TableNextColumn()
+        local hp_pct = tonumber(member.hp_percent) or 0
+        local hp_color = {r=0.9, g=0.9, b=0.9, a=1.0} -- white default
+        if hp_pct < 25 then
+            hp_color = {r=1.0, g=0.2, b=0.2, a=1.0} -- red
+        elseif hp_pct < 50 then
+            hp_color = {r=1.0, g=0.7, b=0.2, a=1.0} -- orange
+        elseif hp_pct < 75 then
+            hp_color = {r=1.0, g=1.0, b=0.3, a=1.0} -- yellow
+        else
+            hp_color = {r=0.3, g=1.0, b=0.3, a=1.0} -- green
+        end
+
+        ImGui.TextColored(hp_color.r, hp_color.g, hp_color.b, hp_color.a,
+                        string.format("%d%%", hp_pct))
     end
-    
-    ImGui.TextColored(hp_color.r, hp_color.g, hp_color.b, hp_color.a, 
-                    string.format("%d%%", member.hp_percent))
-    
-    -- Mana column (3rd column)
+
+    -- Mana column (optional)
     if config.display.show_mana then
         ImGui.TableNextColumn()
         if class_uses_mana(member.class) then
@@ -782,7 +787,12 @@ local function draw_settings_window()
         ImGui.Spacing()
         
         -- Other display options
-        
+
+        local show_hp, hp_changed = ImGui.Checkbox('Show HP Column', config.display.show_hp)
+        if hp_changed then
+            config.display.show_hp = show_hp
+        end
+
         local show_mana, mana_changed = ImGui.Checkbox('Show Mana Column', config.display.show_mana)
         if mana_changed then
             config.display.show_mana = show_mana
@@ -957,50 +967,22 @@ local function draw_settings_window()
         
         ImGui.Spacing()
         
-        -- Auto-size toggle button
-        ImGui.Text('Window Sizing:')
-        ImGui.SameLine()
-        
-        local auto_size_active = config.display.auto_size
-        if auto_size_active then
-            ImGui.PushStyleColor(ImGuiCol.Button, 0.2, 0.6, 0.2, 0.8)
-        end
-        
-        if ImGui.SmallButton('AUTO') then
-            config.display.auto_size = not config.display.auto_size
-        end
-        
-        if auto_size_active then
-            ImGui.PopStyleColor()
-        end
-        
-        if ImGui.IsItemHovered() then
-            ImGui.SetTooltip(config.display.auto_size and 'Auto-sizing enabled (window resizes to fit content)' or 'Auto-sizing disabled (manual window height)')
-        end
-        
-        ImGui.SameLine()
-        ImGui.Text(config.display.auto_size and '(Auto-sizing ON)' or '(Manual sizing)')
-        
-        -- Also keep the checkbox for clarity
-        local auto_size, auto_size_changed = ImGui.Checkbox('Auto-size Window', config.display.auto_size)
-        if auto_size_changed then
-            config.display.auto_size = auto_size
-        end
-        
+        ImGui.TextWrapped('Resize the raid HUD by dragging its edges or corners. Use the sliders below to set default dimensions for new sessions.')
+
         -- Refresh rate
         local refresh_rate, refresh_changed = ImGui.SliderFloat('Refresh Rate (sec)', config.display.refresh_rate, 0.5, 5.0)
         if refresh_changed then
             config.display.refresh_rate = refresh_rate
         end
     end
-    
+
     if ImGui.CollapsingHeader('Window Settings') then
         local opacity, opacity_changed = ImGui.SliderFloat('Opacity', config.window.opacity, 0.3, 1.0)
         if opacity_changed then
             config.window.opacity = opacity
         end
         
-        local width, width_changed = ImGui.SliderInt('Width', config.window.width, 200, 600)
+        local width, width_changed = ImGui.SliderInt('Width', config.window.width, 200, 1200)
         if width_changed then
             config.window.width = width
         end
@@ -1013,30 +995,11 @@ local function draw_settings_window()
             ImGui.SetTooltip('Hide the window title bar for a cleaner look')
         end
         
-        -- Only show manual height control if auto-sizing is disabled
-        if not config.display.auto_size then
-            local height, height_changed = ImGui.SliderInt('Height', config.window.height, 200, 800)
-            if height_changed then
-                config.window.height = height
-            end
-        else
-            ImGui.TextColored(0.7, 0.7, 0.7, 1.0, 'Height: Auto-sized')
+        local height, height_changed = ImGui.SliderInt('Height', config.window.height, 200, 1200)
+        if height_changed then
+            config.window.height = height
         end
-        
-        ImGui.Separator()
-        ImGui.Text('Auto-sizing Settings')
-        
-        -- Auto-sizing bounds
-        local min_height, min_changed = ImGui.SliderInt('Min Height', config.display.min_window_height, 80, 400)
-        if min_changed then
-            config.display.min_window_height = min_height
-        end
-        
-        local max_height, max_changed = ImGui.SliderInt('Max Height', config.display.max_window_height, 200, 1200)
-        if max_changed then
-            config.display.max_window_height = max_height
-        end
-        
+
         local line_spacing, spacing_changed = ImGui.SliderInt('Line Spacing', config.display.line_spacing, 0, 10)
         if spacing_changed then
             config.display.line_spacing = line_spacing
@@ -1207,30 +1170,14 @@ local function draw_group_window(group_number, members)
     
     ImGui.SetNextWindowPos(base_pos_x, base_pos_y, ImGuiCond.FirstUseEver)
     
-    -- Set window size behavior
-    if config.display.auto_size then
-        -- Use ImGui's natural auto-resize but constrain both width and height
-        ImGui.SetNextWindowSizeConstraints(
-            ImVec2(200, config.display.min_window_height or 120),
-            ImVec2(config.window.width, config.display.max_window_height or 800)
-        )
-        -- Let ImGui auto-size naturally but provide a width hint
-        ImGui.SetNextWindowSize(config.window.width, -1, ImGuiCond.FirstUseEver)
-    else
-        -- Manual sizing - use configured dimensions but adjust height for fewer members
-        local estimated_height = math.min(config.window.height, 80 + #members * 25)
-        ImGui.SetNextWindowSize(config.window.width, estimated_height, ImGuiCond.FirstUseEver)
-    end
-    
+    -- Provide initial size hint and then allow manual resizing
+    ImGui.SetNextWindowSize(config.window.width, config.window.height, ImGuiCond.FirstUseEver)
+
     push_styles()
-    
+
     -- Configure window flags based on settings
-    local flags = bit32.bor(
-        ImGuiWindowFlags.AlwaysAutoResize,
-        ImGuiWindowFlags.NoScrollbar,
-        ImGuiWindowFlags.NoScrollWithMouse
-    )
-    
+    local flags = ImGuiWindowFlags.None
+
     -- Add title bar hiding if enabled
     if config.window.hide_title_bar then
         flags = bit32.bor(flags, ImGuiWindowFlags.NoTitleBar)
@@ -1277,7 +1224,9 @@ local function draw_group_window(group_number, members)
     if #members == 0 then
         ImGui.Text("No members in this group")
     else
-        local columns = 2  -- Name and HP% are always shown
+        local show_hp = is_hp_column_enabled()
+        local columns = 1  -- Name column is always shown
+        if show_hp then columns = columns + 1 end
         if config.display.show_mana then columns = columns + 1 end
         if config.display.show_distance then columns = columns + 1 end
         local table_flags = bit32.bor(ImGuiTableFlags.Resizable, ImGuiTableFlags.BordersV)
@@ -1303,7 +1252,9 @@ local function draw_group_window(group_number, members)
                 first_width = config.display.name_width or 120
             end
             ImGui.TableSetupColumn(first_label, ImGuiTableColumnFlags.WidthFixed, first_width)
-            ImGui.TableSetupColumn('HP%', ImGuiTableColumnFlags.WidthFixed, 60)
+            if show_hp then
+                ImGui.TableSetupColumn('HP%', ImGuiTableColumnFlags.WidthFixed, 60)
+            end
             if config.display.show_mana then
                 ImGui.TableSetupColumn('Mana%', ImGuiTableColumnFlags.WidthFixed, config.display.mana_width or 60)
             end
@@ -1379,31 +1330,14 @@ local function draw_raid_hud()
         return
     end
     
-    -- Auto-sizing setup - let ImGui handle the sizing naturally
-    
-    -- Set window size behavior
-    if config.display.auto_size then
-        -- Use ImGui's natural auto-resize but constrain both width and height
-        ImGui.SetNextWindowSizeConstraints(
-            ImVec2(200, config.display.min_window_height or 120),
-            ImVec2(config.window.width, config.display.max_window_height or 800)
-        )
-        -- Let ImGui auto-size naturally but provide a width hint
-        ImGui.SetNextWindowSize(config.window.width, -1, ImGuiCond.FirstUseEver)
-    else
-        -- Manual sizing - use configured dimensions
-        ImGui.SetNextWindowSize(config.window.width, config.window.height, ImGuiCond.FirstUseEver)
-    end
-    
+    -- Provide an initial window size while allowing free manual resizing thereafter
+    ImGui.SetNextWindowSize(config.window.width, config.window.height, ImGuiCond.FirstUseEver)
+
     push_styles()
-    
+
     -- Configure window flags based on settings
-    local flags = bit32.bor(
-        ImGuiWindowFlags.AlwaysAutoResize,
-        ImGuiWindowFlags.NoScrollbar,
-        ImGuiWindowFlags.NoScrollWithMouse
-    )
-    
+    local flags = ImGuiWindowFlags.None
+
     -- Add title bar hiding if enabled
     if config.window.hide_title_bar then
         flags = bit32.bor(flags, ImGuiWindowFlags.NoTitleBar)
@@ -1437,12 +1371,12 @@ local function draw_raid_hud()
     if config.window.hide_title_bar then
         -- Make header more prominent when title bar is hidden
         ImGui.PushStyleColor(ImGuiCol.Text, config.colors.header.r, config.colors.header.g, config.colors.header.b, config.colors.header.a)
-        ImGui.Text(string.format("EZRaid HUD - %s (%d members)", sort_label, #members))
+        ImGui.Text(string.format("EZRaid HUD (%d)", #members))
         ImGui.PopStyleColor()
     else
         -- Normal header when title bar is visible
         ImGui.TextColored(config.colors.header.r, config.colors.header.g, config.colors.header.b, config.colors.header.a, 
-                         string.format("%s (%d members)", sort_label, #members))
+                         string.format("%s (%d)", sort_label, #members))
     end
     
     if ImGui.IsItemHovered() then
@@ -1460,19 +1394,21 @@ local function draw_raid_hud()
             -- Multi-column position-based layout (1-6, 7-12, 13-18, etc.)
             local columns_per_row = config.display.groups_per_row
             local max_members_per_column = 6
-            
+            local show_hp = is_hp_column_enabled()
+
             -- Apply line spacing if configured, otherwise use compact padding
             if config.display.line_spacing > 0 then
                 ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, 3, config.display.line_spacing)
             else
                 ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, 3, 1)
             end
-            
+
             -- Calculate member data columns
-            local member_columns = 2  -- Name and HP% are always shown
+            local member_columns = 1  -- Name column is always shown
+            if show_hp then member_columns = member_columns + 1 end
             if config.display.show_mana then member_columns = member_columns + 1 end
             if config.display.show_distance then member_columns = member_columns + 1 end
-            
+
             local grouped_members = organize_members_by_groups(members)
             local max_groups = math.max(1, math.min(12, config.display.max_groups_to_show or #grouped_members))
             local display_groups = {}
@@ -1510,7 +1446,9 @@ local function draw_raid_hud()
                             local group_info = display_groups[first_group_index + col - 1]
                             local group_number = group_info.number
                             ImGui.TableSetupColumn(string.format('%s##group%d', first_base_label, group_number), ImGuiTableColumnFlags.WidthFixed, first_col_width)
-                            ImGui.TableSetupColumn(string.format('HP%%##group%d', group_number), ImGuiTableColumnFlags.WidthFixed, 60)
+                            if show_hp then
+                                ImGui.TableSetupColumn(string.format('HP%%##group%d', group_number), ImGuiTableColumnFlags.WidthFixed, 60)
+                            end
                             if config.display.show_mana then
                                 ImGui.TableSetupColumn(string.format('Mana%%##group%d', group_number), ImGuiTableColumnFlags.WidthFixed, config.display.mana_width or 60)
                             end
@@ -1564,7 +1502,9 @@ local function draw_raid_hud()
             ImGui.PopStyleVar(1)
         else
             -- Standard single-column layout (existing logic)
-            local columns = 2  -- Name and HP% are always shown
+            local show_hp = is_hp_column_enabled()
+            local columns = 1  -- Name column is always shown
+            if show_hp then columns = columns + 1 end
             if config.display.show_mana then columns = columns + 1 end
             if config.display.show_distance then columns = columns + 1 end
             local table_flags = bit32.bor(ImGuiTableFlags.Resizable, ImGuiTableFlags.BordersV)
@@ -1590,7 +1530,9 @@ local function draw_raid_hud()
                     first_width = config.display.name_width or 120
                 end
                 ImGui.TableSetupColumn(first_label, ImGuiTableColumnFlags.WidthFixed, first_width)
-                ImGui.TableSetupColumn('HP%', ImGuiTableColumnFlags.WidthFixed, 60)
+                if show_hp then
+                    ImGui.TableSetupColumn('HP%', ImGuiTableColumnFlags.WidthFixed, 60)
+                end
                 if config.display.show_mana then
                     ImGui.TableSetupColumn('Mana%', ImGuiTableColumnFlags.WidthFixed, config.display.mana_width)
                 end
@@ -1628,6 +1570,20 @@ local function draw_raid_hud()
         end
     end
     
+    if not ImGui.IsWindowCollapsed() then
+        local width, height = ImGui.GetWindowSize()
+        if width and height then
+            local rounded_width = math.floor(width + 0.5)
+            local rounded_height = math.floor(height + 0.5)
+            if rounded_width ~= config.window.width then
+                config.window.width = rounded_width
+            end
+            if rounded_height ~= config.window.height then
+                config.window.height = rounded_height
+            end
+        end
+    end
+
     ImGui.End()
     pop_styles()
 end
@@ -1731,15 +1687,15 @@ function M.get_name_display_mode()
 end
 
 function M.toggle_auto_size()
-    config.display.auto_size = not config.display.auto_size
+    -- Manual resizing is always enabled; keep function for compatibility
 end
 
-function M.set_auto_size(enabled)
-    config.display.auto_size = enabled and true or false
+function M.set_auto_size(_)
+    -- No-op; auto-sizing support has been removed
 end
 
 function M.is_auto_size_enabled()
-    return config.display.auto_size
+    return false
 end
 
 function M.toggle_title_bar()
