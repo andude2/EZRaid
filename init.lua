@@ -334,7 +334,6 @@ local function layout_unique_list()
             if n and n ~= '' and not set[n] then set[n] = true; table.insert(out, n) end
         end
     end
-    table.sort(out, function(a,b) return a:lower() < b:lower() end)
     return out
 end
 
